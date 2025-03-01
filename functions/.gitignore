@@ -1,0 +1,7 @@
+*.local
+.venv/
+service-account.json
+__pycache__/
+*-debug.log
+.idea/
+.DS_Store
