@@ -64,3 +64,4 @@ firebase deploy --only functions
 ---
 This project automates university-related updates and notifications using Firebase Cloud Functions.
 
+To see the full data model of Cloud Firestore: [MODEL.md](MODEL.md) 
