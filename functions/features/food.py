@@ -1,14 +1,17 @@
 import re
 from datetime import datetime, timedelta
+import pytz
 
 from lxml import html
 import requests
 
 from features.utils import clean_string
 
+KST = pytz.timezone("Asia/Seoul")
+
 
 def fetch_latest_foods() -> list:
-    today = datetime.today()
+    today = datetime.now(KST)
 
     monday = today - timedelta(days=today.weekday())
     last_monday = monday - timedelta(days=7)

@@ -8,11 +8,14 @@ from features.food import fetch_latest_foods
 from features.notice import fetch_popular_notices, fetch_rss_notices
 
 from datetime import datetime, timedelta
+import pytz
 
 cred = credentials.Certificate("./service-account.json")
 initialize_app(cred)
 
 db = firestore.client()
+
+KST = pytz.timezone("Asia/Seoul")
 
 
 # Run once a day at midnight, to set new-foods.
@@ -72,7 +75,7 @@ def update_new_notices(event: scheduler_fn.ScheduledEvent) -> None:
     existing = [doc.to_dict() for doc in docs]
 
     if not existing:
-        latest_existing_date = datetime.today() - timedelta(days=7)
+        latest_existing_date = datetime.now(KST) - timedelta(days=7)
     else:
         latest_existing_date = datetime.fromtimestamp(
             existing[0]["pubDate"].timestamp()
@@ -114,8 +117,6 @@ def update_new_notices(event: scheduler_fn.ScheduledEvent) -> None:
         batch.delete(doc.reference)
 
     for filtered_notice in filtered_notices:
-        # - timedelta(hours=9) to sync with firestore
-        filtered_notice["pubDate"] -= timedelta(hours=9)
         new_notice_ref = collection_ref.document()
         batch.set(new_notice_ref, filtered_notice)
 
@@ -289,7 +290,7 @@ def send_push_notification(req: https_fn.Request) -> https_fn.Response:
     region="asia-northeast3",
 )
 def clear_inactive_accounts_keywords(event: scheduler_fn.ScheduledEvent) -> None:
-    inactive_date = datetime.today() - timedelta(weeks=24)
+    inactive_date = datetime.now(KST) - timedelta(weeks=24)
     docs = (
         db.collection("users")
         .where(filter=FieldFilter("lastActive", "<", inactive_date))

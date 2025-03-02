@@ -1,17 +1,20 @@
 import math
 from datetime import datetime, timedelta
+import pytz
 
 from lxml import html, etree
 import requests
 
 from features.utils import clean_string
 
+KST = pytz.timezone("Asia/Seoul")
+
 
 def fetch_popular_notices(count: int):
     page = 1
     notices = []
 
-    today = datetime.today()
+    today = datetime.now(KST)
     thirty_days_ago = today - timedelta(days=30)
 
     while True:
@@ -93,8 +96,11 @@ def fetch_rss_notices(page: int) -> list:
         title = clean_string(notice.xpath("./title/text()")[0])
         description = clean_string(notice.xpath("./description/text()")[0])
         link = clean_string(notice.xpath("./link/text()")[0])
-        pub_date = datetime.strptime(
-            clean_string(notice.xpath("./pubDate/text()")[0]), "%Y-%m-%d %H:%M:%S.%f"
+        pub_date = KST.localize(
+            datetime.strptime(
+                clean_string(notice.xpath("./pubDate/text()")[0]),
+                "%Y-%m-%d %H:%M:%S.%f",
+            )
         )
 
         result.append(
