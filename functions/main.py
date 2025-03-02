@@ -26,7 +26,7 @@ def update_new_foods(event: scheduler_fn.ScheduledEvent) -> None:
     collection_ref = db.collection("new-foods")
     batch = db.batch()
 
-    docs = collection_ref.stream()
+    docs = collection_ref.get()
     for doc in docs:
         batch.delete(doc.reference)
 
@@ -48,7 +48,7 @@ def update_popular_notices(event: scheduler_fn.ScheduledEvent) -> None:
     collection_ref = db.collection("popular-notices")
     batch = db.batch()
 
-    docs = collection_ref.stream()
+    docs = collection_ref.get()
     for doc in docs:
         batch.delete(doc.reference)
 
@@ -67,65 +67,70 @@ def update_popular_notices(event: scheduler_fn.ScheduledEvent) -> None:
 )
 def update_new_notices(event: scheduler_fn.ScheduledEvent) -> None:
     collection_ref = db.collection("new-notices")
-    docs = collection_ref.order_by("pubDate", direction="DESCENDING").stream()
+    docs = collection_ref.order_by("pubDate", direction="DESCENDING").get()
 
-    existing = []
-    for doc in docs:
-        existing.append(doc.to_dict())
+    existing = [doc.to_dict() for doc in docs]
+
+    if not existing:
+        latest_existing_date = datetime.today() - timedelta(days=7)
+    else:
+        latest_existing_date = datetime.fromtimestamp(
+            existing[0]["pubDate"].timestamp()
+        )
 
     page = 1
     notices = []
     while True:
-        notices.extend(fetch_rss_notices(page))
-        notices = sorted(
-            notices,
-            key=lambda x: datetime.fromtimestamp(x["pubDate"].timestamp()),
-            reverse=True,
+        fetched = fetch_rss_notices(page)
+        if not fetched:
+            break
+
+        notices.extend(fetched)
+        notices.sort(
+            key=lambda x: datetime.fromtimestamp(x["pubDate"].timestamp()), reverse=True
         )
 
-        page += 1
-
-        if datetime.fromtimestamp(
-            notices[-1]["pubDate"].timestamp()
-        ) <= datetime.fromtimestamp(existing[0]["pubDate"].timestamp()):
+        if (
+            datetime.fromtimestamp(notices[-1]["pubDate"].timestamp())
+            <= latest_existing_date
+        ):
             break
+
+        page += 1
 
     filtered_notices = [
         notice
         for notice in notices
-        if datetime.fromtimestamp(notice["pubDate"].timestamp())
-        > datetime.fromtimestamp(existing[0]["pubDate"].timestamp())
+        if datetime.fromtimestamp(notice["pubDate"].timestamp()) > latest_existing_date
     ]
 
-    if len(filtered_notices) == 0:
+    if not filtered_notices:
         return
 
     batch = db.batch()
-    start_batch_update()
+    start_notices_update()
 
     for doc in docs:
         batch.delete(doc.reference)
 
     for filtered_notice in filtered_notices:
         # - timedelta(hours=9) to sync with firestore
-        p_date = filtered_notice["pubDate"] - timedelta(hours=9)
-        filtered_notice["pubDate"] = p_date
-
+        filtered_notice["pubDate"] -= timedelta(hours=9)
         new_notice_ref = collection_ref.document()
         batch.set(new_notice_ref, filtered_notice)
 
     batch.commit()
-    end_batch_update()
+    end_notices_update()
 
 
 # Detect when new-notices collection updates
 @firestore_fn.on_document_written(
-    document="settings/processing_flag", region="asia-northeast3"
+    document="settings/processing-notices", region="asia-northeast3"
 )
 def on_new_notices_updated(event: Event[Change[DocumentSnapshot]]) -> None:
     if event.data.after and event.data.after.get("status") == "processing":
-        notices = db.collection("new-notices").stream()
-        keywords = db.collection("keywords").stream()
+        notices = db.collection("new-notices").get()
+        keywords = db.collection("keywords").get()
 
         for notice in notices:
             notice_doc = notice.to_dict()
@@ -223,12 +228,14 @@ def on_users_keywords_updated(event: Event[Change[DocumentSnapshot]]) -> None:
     batch.commit()
 
 
-def start_batch_update():
-    db.collection("settings").document("processing_flag").set({"status": "processing"})
+def start_notices_update():
+    db.collection("settings").document("processing-notices").set(
+        {"status": "processing"}
+    )
 
 
-def end_batch_update():
-    db.collection("metadata").document("processing_flag").delete()
+def end_notices_update():
+    db.collection("settings").document("processing-notices").delete()
 
 
 def send_fcm_notification(
@@ -243,7 +250,7 @@ def send_fcm_notification(
         docs = (
             db.collection("users")
             .where(filter=FieldFilter("notifications", "array_contains", n_type))
-            .stream()
+            .get()
         )
 
         for doc in docs:
@@ -286,7 +293,7 @@ def clear_inactive_accounts_keywords(event: scheduler_fn.ScheduledEvent) -> None
     docs = (
         db.collection("users")
         .where(filter=FieldFilter("lastActive", "<", inactive_date))
-        .stream()
+        .get()
     )
 
     batch = db.batch()
