@@ -24,13 +24,13 @@ def fetch_popular_notices(count: int):
 
         notices.extend(items)
 
-        if items[-1]["createdAt"] < thirty_days_ago:
+        if items[-1]["createdAt"].replace(tzinfo=KST) < thirty_days_ago:
             break
 
         page += 1
 
     for notice in notices:
-        days_since_posted = (today - notice["createdAt"]).days
+        days_since_posted = (today - notice["createdAt"].replace(tzinfo=KST)).days
         decay_factor = math.exp(-0.1 * days_since_posted)
         notice["score"] = notice["hits"] * decay_factor
 
